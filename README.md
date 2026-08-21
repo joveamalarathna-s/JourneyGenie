@@ -1,11 +1,9 @@
 # 🧭 JourneyGenie — AI Personalized Tourist Guide
 
 <p align="center">
-  <img src="https://img.shields.io/badge/SIH-2026-orange?style=for-the-badge" alt="SIH 2026"/>
+
   <img src="https://img.shields.io/badge/Team-SHE%20CODES-purple?style=for-the-badge" alt="Team SHE CODES"/>
-  <img src="https://img.shields.io/badge/PS%20ID-TC--S01-blue?style=for-the-badge" alt="Problem Statement ID"/>
-  <img src="https://img.shields.io/badge/Event-Blaze%20a%20Trail%204.0-green?style=for-the-badge" alt="Blaze a Trail 4.0"/>
-</p>
+  
 
 <p align="center">
   <b>AI Personalized Tourist Guide Software<br/>
