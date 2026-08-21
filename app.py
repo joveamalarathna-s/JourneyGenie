@@ -172,8 +172,7 @@ with st.sidebar:
     st.divider()
     destination = st.text_input("📍 Destination / Location", value="Chennai")
 
-      budget = st.slider(
-        "💰 Budget (₹)",
+      budget = st.slider("💰 Budget (₹)",
         min_value=500,
         max_value=100000,
         value=5000,
