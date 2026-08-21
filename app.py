@@ -27,6 +27,7 @@ import os
 import json
 import re
 import urllib.parse
+import datetime
 
 import pandas as pd
 import streamlit as st
@@ -293,28 +294,38 @@ with st.sidebar:
     st.divider()
     destination = st.text_input("📍 Destination / Location", value="Chennai")
 
-    budget = st.slider(
+    budget = st.number_input(
         "💰 Budget (₹)",
         min_value=500,
         max_value=10_000_000,
         value=50_000,
         step=500,
-        help="Up to ₹1 crore, for anything from a day trip to an extended multi-month journey.",
+        help="Type your exact budget, up to ₹1 crore.",
     )
     st.caption(f"Selected budget: ₹{budget:,.0f}")
 
-    time_days = st.slider(
-        "🗓️ Trip Length (days)",
-        min_value=1,
-        max_value=180,
-        value=3,
-        step=1,
-        help="Up to 180 days (~6 months).",
-    )
-    if time_days >= 30:
-        st.caption(f"Selected: {time_days} day(s) (~{time_days/30:.1f} months)")
+    st.markdown("🗓️ **Travel Dates**")
+    today = datetime.date.today()
+    date_col1, date_col2 = st.columns(2)
+    with date_col1:
+        start_date = st.date_input("Start date", value=today, min_value=today)
+    with date_col2:
+        end_date = st.date_input(
+            "End date",
+            value=today + datetime.timedelta(days=2),
+            min_value=start_date,
+        )
+
+    if end_date < start_date:
+        st.error("End date must be on or after the start date.")
+        time_days = 1
     else:
-        st.caption(f"Selected: {time_days} day(s)")
+        time_days = (end_date - start_date).days + 1
+
+    if time_days >= 30:
+        st.caption(f"Trip length: {time_days} day(s) (~{time_days/30:.1f} months)")
+    else:
+        st.caption(f"Trip length: {time_days} day(s)")
 
     interests = st.multiselect(
         "🎯 Interests",
@@ -389,12 +400,16 @@ else:
 
     # ---------------- Timeline itinerary cards, grouped by day ----------------
     with left:
-        st.subheader(f"🗓️ Your {time_days}-Day Itinerary")
+        st.subheader(
+            f"🗓️ Your {time_days}-Day Itinerary "
+            f"({start_date.strftime('%d %b %Y')} – {end_date.strftime('%d %b %Y')})"
+        )
 
         days_present = sorted(set(s.get("day", 1) for s in stops))
         for day_num in days_present:
             day_stops = [s for s in stops if s.get("day", 1) == day_num]
-            st.markdown(f"### Day {day_num}")
+            actual_date = start_date + datetime.timedelta(days=day_num - 1)
+            st.markdown(f"### Day {day_num} — {actual_date.strftime('%A, %d %b %Y')}")
             for stop in day_stops:
                 traffic = stop.get("traffic_level", "Low")
                 safety = stop.get("safety_level", "Safe")
