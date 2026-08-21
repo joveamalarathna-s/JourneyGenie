@@ -136,7 +136,7 @@ def generate_itinerary(api_key, destination, budget, time_hours, time_days, inte
         raise RuntimeError("Missing Gemini API key. Add it in the sidebar or as GEMINI_API_KEY.")
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
     prompt = PROMPT_TEMPLATE.format(
         destination=destination,
