@@ -172,21 +172,21 @@ with st.sidebar:
     st.divider()
     destination = st.text_input("📍 Destination / Location", value="Chennai")
 
-    budget = st.slider(
+      budget = st.slider(
         "💰 Budget (₹)",
         min_value=500,
-        max_value=20000,
-        value=3000,
-        step=100,
+        max_value=100000,
+        value=5000,
+        step=500,
     )
 
-    time_hours = st.slider(
-        "🕒 Time Available (hours)",
-        min_value=2,
-        max_value=24,
-        value=6,
-        step=1,
-    )
+    st.markdown("🕒 **Time Available**")
+    time_days = st.slider("Days", min_value=0, max_value=7, value=0, step=1)
+    time_hours_only = st.slider("Hours", min_value=0, max_value=23, value=6, step=1)
+    time_hours = time_days * 24 + time_hours_only
+    if time_hours == 0:
+        time_hours = 2
+    st.caption(f"Total: {time_hours} hours ({time_days} day(s) {time_hours_only} hour(s))")
 
     interests = st.multiselect(
         "🎯 Interests",
