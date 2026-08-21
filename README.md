@@ -8,41 +8,9 @@
 </p>
 
 <p align="center">
-  <b>Smart India Hackathon 2026</b> · Blaze a Trail 4.0, St. Joseph's Institute of Technology<br/>
-  <b>Problem Statement:</b> TC-S01 — AI Personalized Tourist Guide Software<br/>
+  <b>AI Personalized Tourist Guide Software<br/>
   <b>Team:</b> SHE CODES
 </p>
-
----
-
-## 📌 Abstract
-
-Traditional trip-planning tools give every traveler the same generic checklist of "top attractions," ignoring individual budgets, available time, and personal interests. **JourneyGenie** is an AI travel assistant that generates a **hyper-personalized, budget-aware, time-boxed itinerary** in seconds — combining a large language model (Google Gemini) with structured constraint solving, geospatial mapping, and real-time re-routing logic.
-
-Given a destination, a budget range, available hours, and a set of interests (Heritage, Food, Beaches, Shopping, Nightlife), JourneyGenie produces a spot-by-spot timeline — complete with estimated costs, descriptions, and an interactive map — so a tourist can go from "I have 6 hours and ₹2,000 in Chennai" to a ready-to-follow plan instantly.
-
-## 🏗️ System Architecture
-┌─────────────────┐ ┌──────────────────────┐ ┌────────────────────┐
-│ Streamlit UI │─────▶│ Constraint Layer │─────▶│ Gemini LLM Engine │
-│ (Sidebar Inputs) │ │ (Budget/Time/Interest) │ │ (Prompt + Schema) │
-└─────────────────┘ └──────────────────────┘ └────────────────────┘
-│ │
-│ ▼
-│ ┌────────────────────────┐
-│ │ Structured JSON Plan │
-│ │ (spots, cost, time, geo)│
-│ └────────────────────────┘
-▼ │
-┌─────────────────┐ ┌──────────────────────┐ │
-│ Timeline Cards │◀─────│ Response Parser │◀──────────────┘
-│ (Itinerary View) │ │ + Budget Aggregator │
-└─────────────────┘ └──────────────────────┘
-│
-▼
-┌─────────────────────────────────────────────┐
-│ Folium Interactive Map (Route + Markers) │
-│ + Vector-Search-ready POI store (MongoDB) │
-└─────────────────────────────────────────────┘
 
 
 **Flow:** User constraints → prompt engineered against Gemini with a strict JSON schema → response validated/parsed → rendered as timeline cards, budget metrics, and an interactive Folium map → re-routing loop re-queries the model when a spot is skipped or time/budget changes mid-trip.
@@ -134,7 +102,7 @@ JourneyGenie/
 
 ## 👩‍💻 Team SHE CODES
 
-Built with ❤️ for Smart India Hackathon 2026 — Blaze a Trail 4.0, St. Joseph's Institute of Technology.
+Built with ❤️ 
 
 ## 📄 License
 
