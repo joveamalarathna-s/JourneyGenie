@@ -1,6 +1,5 @@
 """
 JourneyGenie — AI Personalized Tourist Guide
-Team: SHE CODES | Smart India Hackathon 2026 | Problem Statement TC-S01
 
 A single-file Streamlit MVP that uses the Google Gemini API to generate
 a personalized, budget-aware, multi-day travel itinerary, renders it as
