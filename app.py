@@ -3,7 +3,7 @@ JourneyGenie — AI Personalized Tourist Guide
 Team: SHE CODES | Smart India Hackathon 2026 | Problem Statement TC-S01
 
 A single-file Streamlit MVP that uses the Google Gemini API to generate
-a personalized, budget-aware, time-boxed travel itinerary, renders it as
+a personalized, budget-aware, multi-day travel itinerary, renders it as
 timeline cards with safety advisories and traffic estimates, plots it on
 an interactive Folium map, and shows a budget usage breakdown.
 
@@ -16,6 +16,11 @@ NOTE on "live" data:
 - Safety advisories (theft-prone areas, slippery paths, etc.) are AI-
   generated general guidance based on common travel-safety knowledge —
   they are advisory only, not official/verified alerts.
+
+NOTE on model names:
+- Gemini model names get retired/renamed periodically by Google. This app
+  tries a list of current model names in order and uses the first one
+  that works, so a single retirement doesn't break the whole app.
 """
 
 import os
@@ -62,6 +67,21 @@ SAMPLE_COORDS = {
 TRAFFIC_COLORS = {"Low": "🟢", "Moderate": "🟡", "Heavy": "🔴"}
 SAFETY_COLORS = {"Safe": "🟢", "Caution": "🟡", "High Risk": "🔴"}
 
+INTEREST_OPTIONS = [
+    "Heritage", "Food", "Beaches", "Shopping", "Nightlife",
+    "Adventure", "Nature & Wildlife", "Religious", "Museums", "Relaxation & Wellness",
+]
+
+# Models tried in order — first one that responds successfully is used.
+# Update this list if Google retires/renames models again.
+MODEL_CANDIDATES = [
+    "gemini-3.5-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-flash-latest",
+]
+
 
 def get_city_center(destination: str):
     key = destination.strip().lower()
@@ -88,16 +108,17 @@ fences, no commentary before or after) matching this exact schema:
   "total_estimated_cost": number,
   "stops": [
     {{
+      "day": integer (1-indexed day number, must not exceed {time_days}),
       "time": "e.g. 09:00 AM",
       "name": "spot name",
-      "category": "one of Heritage, Food, Beaches, Shopping, Nightlife",
+      "category": "one of {interest_options_str}",
       "estimated_cost": number,
       "description": "1-2 sentence description",
       "lat": number,
       "lng": number,
       "traffic_level": "one of Low, Moderate, Heavy (typical congestion getting to this stop at this time)",
       "safety_level": "one of Safe, Caution, High Risk",
-      "safety_note": "short advisory, e.g. 'Crowded market, watch belongings for pickpockets' or 'Rocks can be slippery near the shore' or leave as 'No specific concerns' if Safe"
+      "safety_note": "short advisory, e.g. 'Crowded market, watch belongings for pickpockets' or 'Rocks can be slippery near the shore' or 'No specific concerns' if Safe"
     }}
   ]
 }}
@@ -105,14 +126,12 @@ fences, no commentary before or after) matching this exact schema:
 Constraints:
 - Destination: {destination}
 - Total budget: INR {budget}
-- Time available: {time_hours} hours ({time_days} day(s) covering multiple sub-itineraries if more than 24 hours)
+- Trip length: EXACTLY {time_days} day(s). You MUST generate stops covering all {time_days}
+  day(s), roughly 3-5 stops per day, with the "day" field correctly numbered 1 through {time_days}.
 - Interests (prioritize these): {interests}
-- Sequence stops in a realistic time order, with travel time buffers between stops.
-- If time_hours > 24, spread stops across multiple days, still reflected as a single time-ordered list
-  with times like "Day 1, 09:00 AM", "Day 2, 10:00 AM" etc.
-- The sum of all "estimated_cost" values must not exceed the total budget.
+- Sequence stops in a realistic time order within each day, with travel time buffers between stops.
+- The sum of all "estimated_cost" values across the entire trip must not exceed the total budget.
 - Provide realistic latitude/longitude coordinates for each stop within {destination}, India.
-- Include between 3 and 10 stops depending on how much time is available.
 - Base safety_note on realistic, general common-knowledge travel-safety patterns for that
   type of location (e.g. crowded markets = pickpocket caution, wet rocks/waterfalls = slippery
   caution, isolated areas late at night = caution). Do not fabricate specific crime statistics.
@@ -127,7 +146,7 @@ def clean_json_response(raw_text: str) -> str:
     return text
 
 
-def generate_itinerary(api_key, destination, budget, time_hours, time_days, interests):
+def generate_itinerary(api_key, destination, budget, time_days, interests):
     if not GEMINI_AVAILABLE:
         raise RuntimeError(
             "google-generativeai is not installed. Run: pip install google-generativeai"
@@ -136,56 +155,123 @@ def generate_itinerary(api_key, destination, budget, time_hours, time_days, inte
         raise RuntimeError("Missing Gemini API key. Add it in the sidebar or as GEMINI_API_KEY.")
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
     prompt = PROMPT_TEMPLATE.format(
         destination=destination,
         budget=budget,
-        time_hours=time_hours,
         time_days=time_days,
         interests=", ".join(interests) if interests else "general sightseeing",
+        interest_options_str=", ".join(INTEREST_OPTIONS),
     )
 
-    response = model.generate_content(prompt)
-    raw = response.text
-    cleaned = clean_json_response(raw)
-    data = json.loads(cleaned)
-    return data
+    last_error = None
+    for model_name in MODEL_CANDIDATES:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            raw = response.text
+            cleaned = clean_json_response(raw)
+            data = json.loads(cleaned)
+            data["_model_used"] = model_name
+            return data
+        except Exception as e:
+            last_error = e
+            continue
+
+    raise RuntimeError(
+        f"All model candidates failed. Last error: {last_error}"
+    )
 
 
-def get_demo_itinerary(destination, budget, time_hours, time_days, interests):
-    """Offline fallback so the app is demoable without an API key."""
+# --------------------------------------------------------------------------
+# Demo Mode — generates a full day-by-day itinerary for the exact
+# number of days requested, without needing an API key.
+# --------------------------------------------------------------------------
+DEMO_STOP_TEMPLATES = [
+    {"time": "09:00 AM", "name": "Heritage Museum", "category": "Heritage",
+     "cost_frac": 0.02, "description": "Explore local history and culture.",
+     "traffic_level": "Low", "safety_level": "Safe", "safety_note": "No specific concerns.",
+     "d_lat": 0.010, "d_lng": 0.010},
+    {"time": "11:00 AM", "name": "Street Food Market", "category": "Food",
+     "cost_frac": 0.03, "description": "Sample authentic regional street food.",
+     "traffic_level": "Heavy", "safety_level": "Caution",
+     "safety_note": "Crowded market — keep an eye on bags and valuables (pickpocket risk).",
+     "d_lat": -0.008, "d_lng": 0.015},
+    {"time": "01:30 PM", "name": "Scenic Waterfront", "category": "Beaches",
+     "cost_frac": 0.015, "description": "Relax by the water and enjoy the views.",
+     "traffic_level": "Moderate", "safety_level": "Caution",
+     "safety_note": "Rocks near the shoreline can be slippery — wear grippy footwear.",
+     "d_lat": 0.020, "d_lng": -0.010},
+    {"time": "04:00 PM", "name": "Central Shopping Street", "category": "Shopping",
+     "cost_frac": 0.04, "description": "Browse local crafts and souvenirs.",
+     "traffic_level": "Heavy", "safety_level": "Caution",
+     "safety_note": "Busy pedestrian street — stay alert in dense crowds.",
+     "d_lat": -0.015, "d_lng": -0.020},
+    {"time": "07:30 PM", "name": "Rooftop Lounge", "category": "Nightlife",
+     "cost_frac": 0.035, "description": "Unwind with live music and city views.",
+     "traffic_level": "Moderate", "safety_level": "Safe", "safety_note": "No specific concerns.",
+     "d_lat": 0.005, "d_lng": 0.020},
+    {"time": "08:00 AM", "name": "Adventure Trail", "category": "Adventure",
+     "cost_frac": 0.05, "description": "Guided outdoor adventure activity.",
+     "traffic_level": "Low", "safety_level": "Caution",
+     "safety_note": "Uneven terrain — wear proper footwear and stay with the group.",
+     "d_lat": 0.030, "d_lng": 0.005},
+    {"time": "10:00 AM", "name": "Wildlife Sanctuary", "category": "Nature & Wildlife",
+     "cost_frac": 0.03, "description": "Spot local flora and fauna on a nature walk.",
+     "traffic_level": "Low", "safety_level": "Safe", "safety_note": "No specific concerns.",
+     "d_lat": -0.025, "d_lng": 0.012},
+    {"time": "06:30 AM", "name": "Historic Temple", "category": "Religious",
+     "cost_frac": 0.005, "description": "Visit a serene, historic place of worship.",
+     "traffic_level": "Low", "safety_level": "Safe", "safety_note": "No specific concerns.",
+     "d_lat": 0.008, "d_lng": -0.008},
+    {"time": "02:00 PM", "name": "City Art Museum", "category": "Museums",
+     "cost_frac": 0.015, "description": "Browse curated exhibits on regional art and history.",
+     "traffic_level": "Moderate", "safety_level": "Safe", "safety_note": "No specific concerns.",
+     "d_lat": -0.010, "d_lng": 0.005},
+    {"time": "05:00 PM", "name": "Spa & Wellness Retreat", "category": "Relaxation & Wellness",
+     "cost_frac": 0.06, "description": "Unwind with a relaxing spa session.",
+     "traffic_level": "Low", "safety_level": "Safe", "safety_note": "No specific concerns.",
+     "d_lat": 0.012, "d_lng": -0.015},
+]
+
+
+def get_demo_itinerary(destination, budget, time_days, interests):
+    """Offline fallback that builds a full itinerary for the EXACT number
+    of days requested, cycling through demo stop templates filtered by
+    the selected interests (or all templates if none selected)."""
     lat, lng = get_city_center(destination)
-    demo_stops = [
-        {"time": "Day 1, 09:00 AM", "name": f"{destination} Heritage Museum", "category": "Heritage",
-         "estimated_cost": min(150, budget * 0.05), "description": "Explore local history and culture.",
-         "lat": lat + 0.01, "lng": lng + 0.01,
-         "traffic_level": "Low", "safety_level": "Safe", "safety_note": "No specific concerns."},
-        {"time": "Day 1, 11:00 AM", "name": "Local Street Food Market", "category": "Food",
-         "estimated_cost": min(400, budget * 0.1), "description": "Sample authentic regional street food.",
-         "lat": lat - 0.008, "lng": lng + 0.015,
-         "traffic_level": "Heavy", "safety_level": "Caution",
-         "safety_note": "Crowded market — keep an eye on bags and valuables (pickpocket risk)."},
-        {"time": "Day 1, 01:30 PM", "name": "Scenic Waterfront / Beach", "category": "Beaches",
-         "estimated_cost": min(100, budget * 0.03), "description": "Relax by the water and enjoy the views.",
-         "lat": lat + 0.02, "lng": lng - 0.01,
-         "traffic_level": "Moderate", "safety_level": "Caution",
-         "safety_note": "Rocks near the shoreline can be slippery — wear grippy footwear."},
-        {"time": "Day 1, 04:00 PM", "name": "Central Shopping Street", "category": "Shopping",
-         "estimated_cost": min(800, budget * 0.15), "description": "Browse local crafts and souvenirs.",
-         "lat": lat - 0.015, "lng": lng - 0.02,
-         "traffic_level": "Heavy", "safety_level": "Caution",
-         "safety_note": "Busy pedestrian street — stay alert in dense crowds."},
-        {"time": "Day 1, 07:30 PM", "name": "Rooftop Lounge", "category": "Nightlife",
-         "estimated_cost": min(600, budget * 0.12), "description": "Unwind with live music and city views.",
-         "lat": lat + 0.005, "lng": lng + 0.02,
-         "traffic_level": "Moderate", "safety_level": "Safe", "safety_note": "No specific concerns."},
-    ]
-    filtered = [s for s in demo_stops if not interests or s["category"] in interests]
-    if not filtered:
-        filtered = demo_stops
-    total_cost = sum(s["estimated_cost"] for s in filtered)
-    return {"destination": destination, "total_estimated_cost": total_cost, "stops": filtered}
+
+    pool = [s for s in DEMO_STOP_TEMPLATES if not interests or s["category"] in interests]
+    if not pool:
+        pool = DEMO_STOP_TEMPLATES
+
+    per_day_budget = budget / max(time_days, 1)
+    stops = []
+    pool_len = len(pool)
+
+    for day in range(1, time_days + 1):
+        # 3 stops per day, cycling through the filtered pool
+        stops_today = min(3, pool_len) if pool_len > 0 else 0
+        for i in range(stops_today):
+            template = pool[(day - 1 + i) % pool_len]
+            stop = dict(template)
+            stop["day"] = day
+            stop["name"] = f"{template['name']} ({destination})" if day == 1 else template["name"]
+            stop["estimated_cost"] = round(per_day_budget * template["cost_frac"] * 6, 2)
+            stop["lat"] = lat + template["d_lat"] * (1 + 0.1 * day)
+            stop["lng"] = lng + template["d_lng"] * (1 + 0.1 * day)
+            del stop["cost_frac"], stop["d_lat"], stop["d_lng"]
+            stops.append(stop)
+
+    total_cost = sum(s["estimated_cost"] for s in stops)
+    # Scale down if demo total exceeds budget
+    if total_cost > budget and total_cost > 0:
+        scale = budget / total_cost
+        for s in stops:
+            s["estimated_cost"] = round(s["estimated_cost"] * scale, 2)
+        total_cost = sum(s["estimated_cost"] for s in stops)
+
+    return {"destination": destination, "total_estimated_cost": total_cost, "stops": stops}
 
 
 # --------------------------------------------------------------------------
@@ -210,22 +296,29 @@ with st.sidebar:
     budget = st.slider(
         "💰 Budget (₹)",
         min_value=500,
-        max_value=100000,
-        value=5000,
+        max_value=10_000_000,
+        value=50_000,
         step=500,
+        help="Up to ₹1 crore, for anything from a day trip to an extended multi-month journey.",
     )
+    st.caption(f"Selected budget: ₹{budget:,.0f}")
 
-    st.markdown("🕒 **Time Available**")
-    time_days = st.slider("Days", min_value=0, max_value=7, value=0, step=1)
-    time_hours_only = st.slider("Hours", min_value=0, max_value=23, value=6, step=1)
-    time_hours = time_days * 24 + time_hours_only
-    if time_hours == 0:
-        time_hours = 2
-    st.caption(f"Total: {time_hours} hours ({time_days} day(s) {time_hours_only} hour(s))")
+    time_days = st.slider(
+        "🗓️ Trip Length (days)",
+        min_value=1,
+        max_value=180,
+        value=3,
+        step=1,
+        help="Up to 180 days (~6 months).",
+    )
+    if time_days >= 30:
+        st.caption(f"Selected: {time_days} day(s) (~{time_days/30:.1f} months)")
+    else:
+        st.caption(f"Selected: {time_days} day(s)")
 
     interests = st.multiselect(
         "🎯 Interests",
-        options=["Heritage", "Food", "Beaches", "Shopping", "Nightlife"],
+        options=INTEREST_OPTIONS,
         default=["Heritage", "Food"],
     )
 
@@ -238,7 +331,7 @@ with st.sidebar:
 # --------------------------------------------------------------------------
 st.title("🧭 JourneyGenie")
 st.markdown(
-    "##### AI-powered, budget-aware, time-boxed travel itineraries with safety & traffic advisories — "
+    "##### AI-powered, budget-aware, multi-day travel itineraries with safety & traffic advisories — "
     "built for **Smart India Hackathon 2026** by **Team SHE CODES**"
 )
 st.divider()
@@ -247,18 +340,18 @@ if "itinerary" not in st.session_state:
     st.session_state.itinerary = None
 
 if generate_clicked:
-    with st.spinner("JourneyGenie is crafting your personalized itinerary..."):
+    with st.spinner(f"JourneyGenie is crafting your {time_days}-day personalized itinerary..."):
         try:
             if use_demo_mode or not api_key_input:
-                itinerary = get_demo_itinerary(destination, budget, time_hours, time_days, interests)
+                itinerary = get_demo_itinerary(destination, budget, time_days, interests)
                 st.session_state.used_demo = True
             else:
-                itinerary = generate_itinerary(api_key_input, destination, budget, time_hours, time_days, interests)
+                itinerary = generate_itinerary(api_key_input, destination, budget, time_days, interests)
                 st.session_state.used_demo = False
             st.session_state.itinerary = itinerary
         except Exception as e:
             st.error(f"Couldn't generate itinerary via Gemini ({e}). Falling back to Demo Mode.")
-            st.session_state.itinerary = get_demo_itinerary(destination, budget, time_hours, time_days, interests)
+            st.session_state.itinerary = get_demo_itinerary(destination, budget, time_days, interests)
             st.session_state.used_demo = True
 
 itinerary = st.session_state.itinerary
@@ -268,6 +361,8 @@ if itinerary is None:
 else:
     if st.session_state.get("used_demo"):
         st.warning("Showing a Demo Mode itinerary (no live Gemini call was made).", icon="🧪")
+    elif itinerary.get("_model_used"):
+        st.caption(f"✅ Generated live via Gemini model: `{itinerary['_model_used']}`")
 
     st.caption(
         "ℹ️ Traffic levels are AI-estimated typical congestion, not live sensor data. "
@@ -292,40 +387,45 @@ else:
 
     left, right = st.columns([1.2, 1])
 
-    # ---------------- Timeline itinerary cards ----------------
+    # ---------------- Timeline itinerary cards, grouped by day ----------------
     with left:
-        st.subheader("🗓️ Your Itinerary")
-        for stop in stops:
-            traffic = stop.get("traffic_level", "Low")
-            safety = stop.get("safety_level", "Safe")
-            traffic_icon = TRAFFIC_COLORS.get(traffic, "🟢")
-            safety_icon = SAFETY_COLORS.get(safety, "🟢")
+        st.subheader(f"🗓️ Your {time_days}-Day Itinerary")
 
-            with st.container(border=True):
-                c1, c2 = st.columns([1, 3])
-                with c1:
-                    st.markdown(f"**🕐 {stop.get('time', '-')}**")
-                    st.caption(stop.get("category", ""))
-                with c2:
-                    st.markdown(f"**{stop.get('name', 'Unnamed Spot')}**")
-                    st.write(stop.get("description", ""))
-                    st.markdown(f"💵 Estimated Cost: **₹{stop.get('estimated_cost', 0):,.0f}**")
+        days_present = sorted(set(s.get("day", 1) for s in stops))
+        for day_num in days_present:
+            day_stops = [s for s in stops if s.get("day", 1) == day_num]
+            st.markdown(f"### Day {day_num}")
+            for stop in day_stops:
+                traffic = stop.get("traffic_level", "Low")
+                safety = stop.get("safety_level", "Safe")
+                traffic_icon = TRAFFIC_COLORS.get(traffic, "🟢")
+                safety_icon = SAFETY_COLORS.get(safety, "🟢")
 
-                    badge_col1, badge_col2 = st.columns(2)
-                    with badge_col1:
-                        st.markdown(f"{traffic_icon} **Traffic:** {traffic}")
-                    with badge_col2:
-                        st.markdown(f"{safety_icon} **Safety:** {safety}")
+                with st.container(border=True):
+                    c1, c2 = st.columns([1, 3])
+                    with c1:
+                        st.markdown(f"**🕐 {stop.get('time', '-')}**")
+                        st.caption(stop.get("category", ""))
+                    with c2:
+                        st.markdown(f"**{stop.get('name', 'Unnamed Spot')}**")
+                        st.write(stop.get("description", ""))
+                        st.markdown(f"💵 Estimated Cost: **₹{stop.get('estimated_cost', 0):,.0f}**")
 
-                    if safety != "Safe":
-                        st.warning(stop.get("safety_note", ""), icon="⚠️")
+                        badge_col1, badge_col2 = st.columns(2)
+                        with badge_col1:
+                            st.markdown(f"{traffic_icon} **Traffic:** {traffic}")
+                        with badge_col2:
+                            st.markdown(f"{safety_icon} **Safety:** {safety}")
 
-                    maps_url = google_maps_link(
-                        stop.get("lat", get_city_center(destination)[0]),
-                        stop.get("lng", get_city_center(destination)[1]),
-                        stop.get("name", ""),
-                    )
-                    st.markdown(f"[🗺️ Open in Google Maps (live traffic)]({maps_url})")
+                        if safety != "Safe":
+                            st.warning(stop.get("safety_note", ""), icon="⚠️")
+
+                        maps_url = google_maps_link(
+                            stop.get("lat", get_city_center(destination)[0]),
+                            stop.get("lng", get_city_center(destination)[1]),
+                            stop.get("name", ""),
+                        )
+                        st.markdown(f"[🗺️ Open in Google Maps (live traffic)]({maps_url})")
 
     # ---------------- Interactive map ----------------
     with right:
@@ -335,7 +435,7 @@ else:
             center_lat = stops[0].get("lat", center_lat)
             center_lng = stops[0].get("lng", center_lng)
 
-        route_map = folium.Map(location=[center_lat, center_lng], zoom_start=13, tiles="OpenStreetMap")
+        route_map = folium.Map(location=[center_lat, center_lng], zoom_start=12, tiles="OpenStreetMap")
 
         coords = []
         for i, stop in enumerate(stops, start=1):
@@ -347,7 +447,7 @@ else:
             marker_color = "red" if safety == "High Risk" else ("orange" if safety == "Caution" else "blue")
 
             popup_html = (
-                f"<b>{i}. {stop.get('name', '')}</b><br/>"
+                f"<b>Day {stop.get('day', 1)}: {stop.get('name', '')}</b><br/>"
                 f"{stop.get('time', '')}<br/>"
                 f"Traffic: {stop.get('traffic_level', 'Low')}<br/>"
                 f"Safety: {safety}"
@@ -355,12 +455,12 @@ else:
             folium.Marker(
                 location=[lat, lng],
                 popup=folium.Popup(popup_html, max_width=250),
-                tooltip=f"{i}. {stop.get('name', '')}",
+                tooltip=f"Day {stop.get('day', 1)}: {stop.get('name', '')}",
                 icon=folium.Icon(color=marker_color, icon="info-sign"),
             ).add_to(route_map)
 
         if len(coords) > 1:
-            folium.PolyLine(coords, color="#6c5ce7", weight=4, opacity=0.8).add_to(route_map)
+            folium.PolyLine(coords, color="#6c5ce7", weight=3, opacity=0.7).add_to(route_map)
 
         st_folium(route_map, width=None, height=420, returned_objects=[])
         st.caption("🔵 Safe   🟠 Caution   🔴 High Risk")
@@ -371,17 +471,19 @@ else:
     st.subheader("📊 Budget Breakdown by Stop")
     if stops:
         df = pd.DataFrame(stops)
-        display_cols = ["name", "category", "estimated_cost", "traffic_level", "safety_level"]
+        display_cols = ["day", "name", "category", "estimated_cost", "traffic_level", "safety_level"]
         display_cols = [c for c in display_cols if c in df.columns]
         df_display = df[display_cols].rename(columns={
-            "name": "Spot", "category": "Category", "estimated_cost": "Estimated Cost (₹)",
+            "day": "Day", "name": "Spot", "category": "Category",
+            "estimated_cost": "Estimated Cost (₹)",
             "traffic_level": "Traffic", "safety_level": "Safety",
         })
         b1, b2 = st.columns([1.2, 1])
         with b1:
             st.dataframe(df_display, use_container_width=True, hide_index=True)
         with b2:
-            st.bar_chart(df.set_index("name")["estimated_cost"])
+            by_day = df.groupby("day")["estimated_cost"].sum() if "day" in df.columns else df.set_index("name")["estimated_cost"]
+            st.bar_chart(by_day)
 
 st.divider()
 st.caption("JourneyGenie · Team SHE CODES · Smart India Hackathon 2026 · Problem Statement TC-S01")
