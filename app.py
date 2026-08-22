@@ -50,6 +50,84 @@ st.set_page_config(
     layout="wide",
 )
 
+# --------------------------------------------------------------------------
+# Custom styling — re-skins default Streamlit chrome into a branded landing
+# page look: custom fonts, hero banner, gradient accents, styled cards.
+# --------------------------------------------------------------------------
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif;
+}
+h1, h2, h3, h4 { font-family: 'Poppins', sans-serif; }
+
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header[data-testid="stHeader"] {background: transparent;}
+
+.block-container { padding-top: 1.5rem; max-width: 1200px; }
+
+.jg-hero {
+    background: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 50%, #74b9ff 100%);
+    padding: 2.75rem 2.5rem;
+    border-radius: 20px;
+    color: white;
+    margin-bottom: 1.75rem;
+    box-shadow: 0 12px 32px rgba(108, 92, 231, 0.25);
+}
+.jg-hero h1 {
+    font-size: 2.6rem;
+    font-weight: 800;
+    margin-bottom: 0.4rem;
+    color: white;
+}
+.jg-hero p {
+    font-size: 1.05rem;
+    opacity: 0.95;
+    margin: 0;
+}
+.jg-badge-row { margin-top: 1rem; }
+.jg-badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.18);
+    padding: 0.3rem 0.8rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    margin-right: 0.5rem;
+    backdrop-filter: blur(4px);
+}
+
+div[data-testid="stMetric"] {
+    background: #F5F3FF;
+    border-radius: 14px;
+    padding: 1rem;
+    border: 1px solid #E4DEFF;
+}
+
+div[data-testid="stExpander"] {
+    border-radius: 14px;
+    border: 1px solid #E4DEFF;
+}
+
+.stButton>button {
+    border-radius: 10px;
+    font-weight: 600;
+    padding: 0.6rem 1.2rem;
+}
+
+section[data-testid="stSidebar"] {
+    background: #F8F7FF;
+    border-right: 1px solid #E4DEFF;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    border-radius: 14px !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 TRAFFIC_COLORS = {"Low": "🟢", "Moderate": "🟡", "Heavy": "🔴"}
 SAFETY_COLORS = {"Safe": "🟢", "Caution": "🟡", "High Risk": "🔴"}
 FOOD_ICONS = {"Veg": "🥦 Veg", "Non-Veg": "🍗 Non-Veg", "Both": "🍽️ Veg & Non-Veg", "N/A": ""}
@@ -490,12 +568,20 @@ with st.sidebar:
 # --------------------------------------------------------------------------
 # Main area
 # --------------------------------------------------------------------------
-st.title("🧭 JourneyGenie")
-st.markdown(
-    "##### AI-powered, budget-aware, multi-day travel itineraries with safety, weather, "
-    "and transport guidance — for destinations anywhere in the world, by **Team SHE CODES**"
-)
-st.divider()
+st.markdown("""
+<div class="jg-hero">
+    <h1>🧭 JourneyGenie</h1>
+    <p>AI-powered, budget-aware, multi-day travel itineraries with safety, weather, and transport
+    guidance — for destinations anywhere in the world.</p>
+    <div class="jg-badge-row">
+        <span class="jg-badge">🌍 Global Destinations</span>
+        <span class="jg-badge">🤖 Gemini AI</span>
+        <span class="jg-badge">☀️ Live Weather</span>
+        <span class="jg-badge">🚨 Safety Advisories</span>
+        <span class="jg-badge">👶 Kids Mode</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 if "itinerary" not in st.session_state:
     st.session_state.itinerary = None
