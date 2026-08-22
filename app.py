@@ -435,11 +435,12 @@ with st.sidebar:
     st.caption("AI Personalized Tourist Guide · Team SHE CODES")
     st.divider()
 
-    api_key_input = st.text_input(
-        "Gemini API Key", value=os.environ.get("GEMINI_API_KEY", ""), type="password",
-        help="Get a free key at https://ai.google.dev/. Leave blank to use Demo Mode.",
-    )
-    use_demo_mode = st.checkbox("Use Demo Mode (no API key needed)", value=not bool(api_key_input))
+    api_key_input = os.environ.get("GEMINI_API_KEY", "")
+    use_demo_mode = st.checkbox("Use Demo Mode (no live AI call)", value=not bool(api_key_input))
+    if api_key_input:
+        st.caption("🔑 Gemini API key loaded securely from app settings.")
+    else:
+        st.caption("⚠️ No Gemini API key configured — running in Demo Mode.")
 
     st.divider()
     destination = st.text_input("📍 Destination (any city, worldwide)", value="Chennai, India")
